@@ -4,7 +4,7 @@ import time
 import ffmpeg
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes
-from telegram.ext.filters import filters
+from telegram.ext.filters import VIDEO, COMMAND  # Importation correcte
 
 # Configuration du logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -140,7 +140,7 @@ async def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("format", set_format))
-    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    application.add_handler(MessageHandler(VIDEO, handle_video))  # Utilisation de VIDEO
 
     logger.info("Bot démarré, configuration du webhook...")
     if WEBHOOK_URL:
