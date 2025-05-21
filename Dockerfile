@@ -1,11 +1,8 @@
-FROM python:3.11-slim
-
-RUN apt-get update && apt-get install -y ffmpeg
+FROM jrottenberg/ffmpeg:4.4-ubuntu
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-ENV PORT=8443
-CMD ["python", "bot.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "--threads", "4", "bot:app"]

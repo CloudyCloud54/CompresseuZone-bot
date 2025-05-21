@@ -4,7 +4,9 @@ import time
 import ffmpeg
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes
-from telegram.ext.filters import VIDEO, COMMAND  # Importation correcte
+from telegram.ext.filters import VIDEO, COMMAND
+from flask import Flask, request
+import asyncio
 
 # Configuration du logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -16,6 +18,9 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 
 # Dictionnaire pour stocker le format choisi par utilisateur (par défaut : MP4)
 user_formats = {}
+
+app = Flask(__name__)
+app.application = None  # Initialisé plus tard
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Commande /start : Affiche un message de bienvenue."""
@@ -44,7 +49,7 @@ def compress_video(file_path: str, output_path: str, original_size_mb: float, du
         logger.info("Début de la compression vidéo")
         start_time = time.time()
         stream = ffmpeg.input(file_path)
-        target_size_mb = original_size_mb * 0.65  # Cible : 65% de la taille
+        target_size_mb = original_size_mb * 0.65
         target_bitrate = int(target_size_mb * 8 * 1000 / duration) if duration else 400
         stream = ffmpeg.output(
             stream,
@@ -85,7 +90,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     video_file = video.get_file()
-    format_choice = user_formats.get(user.id, 'mp4')  # Par défaut : MP4
+    format_choice = user_formats.get(user.id, 'mp4')
     video_path = f"/tmp/{user.id}_original.mp4"
     compressed_path = f"/tmp/{user.id}_compressed.{format_choice}"
 
@@ -134,34 +139,34 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if os.path.exists(compressed_path):
             os.remove(compressed_path)
 
+@app.route(f'/{TOKEN}', methods=['POST'])
+async def webhook():
+    if app.application is None:
+        logger.error("Application not initialized")
+        return 'Error', 500
+    update = Update.de_json(request.get_json(), app.application.bot)
+    await app.application.process_update(update)
+    return 'OK'
+
 async def main():
     """Démarre le bot avec webhook."""
-    application = Application.builder().token(TOKEN).build()
+    try:
+        app.application = Application.builder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("format", set_format))
-    application.add_handler(MessageHandler(VIDEO, handle_video))  # Utilisation de VIDEO
+        app.application.add_handler(CommandHandler("start", start))
+        app.application.add_handler(CommandHandler("format", set_format))
+        app.application.add_handler(MessageHandler(VIDEO, handle_video))
 
-    logger.info("Bot démarré, configuration du webhook...")
-    if WEBHOOK_URL:
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-        logger.info(f"Webhook configuré : {WEBHOOK_URL}/{TOKEN}")
-    else:
-        logger.error("WEBHOOK_URL non défini !")
-        return
-
-    # Lancer Flask pour le webhook
-    from flask import Flask, request
-    flask_app = Flask(__name__)
-
-    @flask_app.route(f'/{TOKEN}', methods=['POST'])
-    async def webhook():
-        update = Update.de_json(request.get_json(), application.bot)
-        await application.process_update(update)
-        return 'OK'
-
-    flask_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8443)))
+        logger.info("Bot démarré, configuration du webhook...")
+        if WEBHOOK_URL:
+            await app.application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+            logger.info(f"Webhook configuré : {WEBHOOK_URL}/{TOKEN}")
+        else:
+            logger.error("WEBHOOK_URL non défini !")
+            raise ValueError("WEBHOOK_URL is not set")
+    except Exception as e:
+        logger.error(f"Erreur démarrage bot : {str(e)}")
+        raise
 
 if __name__ == '__main__':
-    import asyncio
     asyncio.run(main())
