@@ -3,7 +3,8 @@ import time
 import requests
 import os
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, Filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes
+from telegram.ext.filters import Filters as filters  # Changement ici
 from PIL import Image
 import ffmpeg
 import urllib3.exceptions
@@ -291,9 +292,9 @@ async def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(Filters.photo, handle_image))
-    application.add_handler(MessageHandler(Filters.video, handle_video))
-    application.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_url))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_image))  # Changement ici
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))  # Changement ici
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))  # Changement ici
 
     logger.info("Bot démarré avec succès ! Configuration du webhook...")
     if WEBHOOK_URL:
