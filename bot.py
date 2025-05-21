@@ -4,7 +4,7 @@ import requests
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes
-from telegram.ext.filters import Filters as filters  # Changement ici
+from telegram.ext.filters import filters  # Changement ici
 from PIL import Image
 import ffmpeg
 import urllib3.exceptions
