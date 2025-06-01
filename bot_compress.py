@@ -382,26 +382,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display help instructions to the user."""
     help_text = (
-        "📚 *Video Compression Bot - Help*\n\n"
-        "You can send me a video file and I will compress it based on your preferences.\n\n"
+        "📚 *Video Compression Bot \\- Help*\n\n"
+        "You can send me a video file and I will compress it based on your preferences\\.\n\n"
         "⚙️ *Settings*\n"
-        "/settings – Open the compression settings menu:\n"
-        "• Output format (mp4, mkv, avi...)\n"
-        "• Resolution (e.g., 1280x720)\n"
-        "• Bitrate (e.g., 480k, 1000k)\n"
-        "• Filename prefix/suffix\n"
+        "/settings \\- Open the compression settings menu\\:\n"
+        "• Output format \\(mp4, mkv, avi\\.\\.\\.\\)\n"
+        "• Resolution \\(e\\.g\\., 1280x720\\)\n"
+        "• Bitrate \\(e\\.g\\., 480k, 1000k\\)\n"
+        "• Filename prefix\\/suffix\n"
         "• Thumbnail\n"
         "• FFmpeg tune profile\n\n"
         "▶️ *How to use*\n"
-        "1. Set your preferences via /settings.\n"
-        "2. Send me a video file (max ~2000MB for upload).\n"
-        "3. I will compress it and send it back to you.\n\n"
-        "🔄 You can reset your settings anytime in the settings menu.\n\n"
-        "👨‍💻 Created by @Kevloudy and @Samson_Hyacinth"
+        "1\\. Set your preferences via /settings\\.\n"
+        "2\\. Send me a video file \\(max \\~2000MB for upload\\)\\.\n"
+        "3\\. I will compress it and send it back to you\\.\n\n"
+        "🔄 You can reset your settings anytime in the settings menu\\.\n\n"
+        "👨‍💻 Created by @Kevloudy and @Samson\\_Hyacinth"
     )
-    await context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text=help_text,
-                                   parse_mode="MarkdownV2")
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=help_text,
+        parse_mode="MarkdownV2"
+    )
 
 
 if __name__ == '__main__':
