@@ -36,8 +36,6 @@ if not TOKEN:
 DATA_FILE = "compresse_data.json"
 
 class BotManager:
-    def __init__(self):
-        pass
 
     async def load_data(self) -> dict:
         if not os.path.exists(DATA_FILE):
@@ -86,6 +84,40 @@ ASK_PREFIX_SUFFIX = 0
 ASK_THUMBNAIL = 1
 
 # === Menu de paramètre principal ===
+def build_settings_message(user: dict) -> tuple[str, InlineKeyboardMarkup]:
+    upload_type = "Media" if user['upload_type'] == "document" else "Document"
+    keyboard = [
+        [InlineKeyboardButton(f"Upload comme {upload_type}", callback_data="upload_type")],
+        [
+            InlineKeyboardButton("Output Format", callback_data="compresse_format"),
+            InlineKeyboardButton("Résolution", callback_data="compresse_resolution")
+        ],
+        [
+            InlineKeyboardButton("Préfixe", callback_data="prefixe"),
+            InlineKeyboardButton("Suffixe", callback_data="suffixe")
+        ],
+        [InlineKeyboardButton("🖼️ Thumbnail", callback_data="thumbnail")],
+        [
+            InlineKeyboardButton("Bitrate", callback_data="change_bitrate"),
+            InlineKeyboardButton("Tune", callback_data="tune")
+        ],
+        [InlineKeyboardButton("🔄 Réinitialiser les paramètres", callback_data="reset_user_settings")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ]
+    text = (
+        "🛠 *Paramètres de compression et d'upload*\n\n"
+        f"Upload as : *{escape_markdown(text=user['upload_type'], version=2).upper()}*\n"
+        f"Compression format : *{escape_markdown(text=user['video_format'], version=2).upper()}*\n"
+        f"Résolution de la compression : *{escape_markdown(text=user['compresse_resolution'], version=2)}*\n"
+        f"Préfixe : `{escape_markdown(text=user['prefixe'], version=2)}`\n"
+        f"Suffixe : `{escape_markdown(text=user['suffixe'], version=2)}`\n"
+        f"Thumbnail : *{escape_markdown(text=user['thumbnail'], version=2)}*\n"
+        f"Compression bitrate : *{escape_markdown(text=user['bitrate'], version=2).upper()}*\n"
+        f"Tune : *{escape_markdown(text=user['tune'], version=2).upper()}*\n"
+    )
+    return text, InlineKeyboardMarkup(keyboard)
+
+
 async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = await bot_manager.load_data()
     user_id = str(update.effective_user.id)
@@ -93,51 +125,27 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bot_manager.init_new_user(user_id=user_id, data=data)
     user = data[user_id]
 
-    upload_type = "Media" if user['upload_type'] == "document" else "Document"
+    text, reply_markup = build_settings_message(user)
 
-    keyboard = [
-        [InlineKeyboardButton(f"Upload comme {upload_type}", callback_data="upload_type")],
-        [
-            InlineKeyboardButton("🎞 Format de compression de la Vidéo",
-                                  callback_data="compresse_format"),
-            InlineKeyboardButton("🎬 Résolution de compression de la vidéo",
-                                  callback_data="compresse_resolution")
-         ],
-        [
-            InlineKeyboardButton("➕ Préfixe du nom du fichier", callback_data="prefixe"),
-            InlineKeyboardButton("Suffixe du nom du fichier", callback_data="suffixe")
-        ],
-        [InlineKeyboardButton("🖼️ Thumbnail", callback_data="thumbnail")],
-        [
-            InlineKeyboardButton("📶 Bitrate de compression", callback_data="change_bitrate"),
-            InlineKeyboardButton("Tune", callback_data="tune")
-         ],
-        [InlineKeyboardButton("🔄 Réinitialiser les paramètres", callback_data="reset_user_settings")],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            parse_mode='MarkdownV2',
+            reply_markup=reply_markup
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode='MarkdownV2',
+            reply_markup=reply_markup
+        )
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=(
-            "🛠 *Paramètres de compression et d'upload*\n\n"
-            f"Upload as *{escape_markdown(text=user['upload_type'], version=2)}*\n"
-            f"Compression format : *{escape_markdown(text=user['video_format'], version=2)}*\n"
-            f"Résolution de la compression : *{escape_markdown(text=user['compresse_resolution'], version=2)}*\n"
-            f"Préfixe du nom du fichier : `{escape_markdown(text=user['prefixe'], version=2)}`\n"
-            f"Suffixe du nom du fichier : `{escape_markdown(text=user['suffixe'], version=2)}`\n"
-            f"Thumbnail *{escape_markdown(text=user['thumbnail'], version=2)}*\n"
-            f"Compression bitrate *{escape_markdown(text=user['bitrate'], version=2)}*\n"
-            f"Tune *{escape_markdown(text=user['tune'], version=2)}*\n"
-        ),
-        parse_mode='MarkdownV2',
-        reply_markup=reply_markup
-    )
 
 # === Génération des sous-claviers ===
 def build_choice_keyboard(param_name: str, choices: list[str]) -> InlineKeyboardMarkup:
     keyboard = [
-        [InlineKeyboardButton(label.upper(), callback_data=f"set:{param_name}:{label}")]
+        [InlineKeyboardButton(label.upper(), callback_data=f"set {param_name} {label}")]
         for label in choices
     ]
     keyboard.append([InlineKeyboardButton("⬅️ Retour", callback_data="back_to_settings")])
@@ -147,14 +155,12 @@ def build_choice_keyboard(param_name: str, choices: list[str]) -> InlineKeyboard
 # === Gestion des set:param:value ===
 async def handle_set_param(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    _, param_name, value = query.data.split(":")
+    _, param_name, value = query.data.split(" ")
 
     user_id = str(update.effective_user.id)
     data = await bot_manager.load_data()
     data[user_id][param_name] = value
     await bot_manager.save_data(data)
-
-    await query.answer(f"✅ {param_name} mis à jour : {value.upper()}")
     await settings(update, context)
 
 
@@ -170,9 +176,17 @@ def pre_suffix_keyboard(param_name: str):
 async def set_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    param_name:str = context.user_data['param_name']
-    await query.edit_message_text(f"✏️ Envoyez le {param_name.title()} que vous voulez utiliser :",
-                                  reply_markup=pre_suffix_keyboard(param_name=f"{param_name}"))
+
+    # Save currect update to edit after the good message : avoid to send new setting message
+    context.user_data['current_update'] = update
+
+    param_name = query.data
+    context.user_data["param_name"] = param_name
+
+    await query.edit_message_text(
+        f"✏️ Envoyez le {param_name.title()} que vous voulez utiliser :",
+        reply_markup=pre_suffix_keyboard(param_name)
+    )
     return ASK_PREFIX_SUFFIX
 
 
@@ -183,19 +197,11 @@ async def receive_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TY
     param_name = context.user_data.pop('param_name')
     data[user_id][f"{param_name}"] = update.message.text
     await bot_manager.save_data(data)
+    await context.bot.delete_message(chat_id= update.effective_chat.id, message_id=update.effective_message.id)
 
-    await update.message.reply_text(f"✅ {param_name.title()} enregistré : `{update.message.text}`",
-                                    parse_mode="Markdown")
-    await settings(update, context)
+    last_update = context.user_data.pop('current_update')
+    await settings(update=last_update, context=context)
     return ConversationHandler.END
-
-
-async def handle_change_thumbnail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(f"🖼️ Envoyez l'image que vous voulez utiliser comme thumbnail :",
-                                  reply_markup=pre_suffix_keyboard(param_name="thumbnail"))
-    return ASK_THUMBNAIL
 
 
 async def delete_pre_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -204,8 +210,20 @@ async def delete_pre_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     param_name = context.user_data.get('param_name', 'suffixe')
     data[user_id][param_name] = ""
     await bot_manager.save_data(data)
-    await update.message.reply_text(f"✅ {param_name} supprimé")
+    last_update = context.user_data.pop('current_update')
+    await settings(update=last_update, context=context)
     return ConversationHandler.END
+
+
+async def handle_change_thumbnail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Save currect update to edit after the good message : avoid to send new setting message
+    context.user_data['current_update'] = update
+    await query.edit_message_text(f"🖼️ Envoyez l'image que vous voulez utiliser comme thumbnail :",
+                                  reply_markup=pre_suffix_keyboard(param_name="thumbnail"))
+    return ASK_THUMBNAIL
 
 
 async def receive_thumbnail(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,9 +237,10 @@ async def receive_thumbnail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = await bot_manager.load_data()
     data[user_id]['thumbnail'] = "Exist"
     await bot_manager.save_data(data)
+    await context.bot.delete_message(update.effective_chat.id, update.effective_message.id)
 
-    await update.message.reply_text("✅ Thumbnail enregistré")
-    await settings(update, context)
+    last_update = context.user_data.pop('current_update')
+    await settings(update=last_update, context=context)
     return ConversationHandler.END
 
 
@@ -234,13 +253,21 @@ async def delete_thumbnail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = await bot_manager.load_data()
         data[user_id]['thumbnail'] = "Not Exist"
         await bot_manager.save_data(data)
-        await update.message.reply_text("✅ Thumbnail supprimé")
+
+    last_update = context.user_data.pop('current_update')
+    await settings(update=last_update, context=context)
     return ConversationHandler.END
 
 
 async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
-    await update.callback_query.edit_message_text("❌ Action annulée.")
+    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.effective_message.id)
+    return ConversationHandler.END
+
+
+async def conversation_back_to_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    last_update = context.user_data.pop('current_update')
+    await settings(update=last_update, context=context)
     return ConversationHandler.END
 
 
@@ -249,7 +276,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
 
-    if data.startswith("set:"):
+    if data.startswith("set"):
         await handle_set_param(update, context)
 
     elif data == "upload_type":
@@ -257,10 +284,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
         data[user_id]['upload_type'] = "media" if data[user_id]['upload_type'] == "document" else "document"
         await bot_manager.save_data(data)
+        text, reply_markup = build_settings_message(data[user_id])
+        await query.edit_message_text(text=text, parse_mode='MarkdownV2', reply_markup=reply_markup)
+
 
     elif data == "compresse_format":
         await query.edit_message_text(
-            "🎞 Choisissez le format de compression :",
+            "Choisissez le format de compression :",
             reply_markup=build_choice_keyboard("video_format", ["mp4", "mkv", "avi", "ts"])
         )
 
@@ -271,18 +301,17 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                                ["1920:1080", "1280:720", "720:480"])
         )
 
-    elif data == "prefixe":
-        context.user_data["param_name"] = "prefixe"
-        await set_prefix_suffix(update=update, context=context)
-
-    elif data == "suffixe":
-        context.user_data["param_name"] = "suffixe"
-        await set_prefix_suffix(update=update, context=context)
-
     elif data == "change_bitrate":
         await query.edit_message_text(
-            "📶 Choisissez le bitrate de compression :",
+            "Choisissez le bitrate de compression :",
             reply_markup=build_choice_keyboard("bitrate", ["480k", "1000k", "1500k", "2000k"])
+        )
+
+    elif data == "tune":
+        await query.edit_message_text(
+            "Choisissez le tune de compression :",
+            reply_markup=build_choice_keyboard(param_name="tune",
+                                               choices=["animation", "film", "grain", "stillimage", "zerolatency"])
         )
 
     elif data == "reset_user_settings":
@@ -293,6 +322,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "back_to_settings":
         await settings(update, context)
+
+    elif data == "close":
+        await cancel_callback(update, context)
 
     else:
         await query.answer("❌ Action inconnue")
@@ -312,104 +344,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                         )
                                    )
 
-"""
-def compress_video(file_path: str, output_path: str, original_size_mb: float, duration: float = None, format_choice: str = 'mp4') -> tuple:
-    """"""Compresse la vidéo en 360p avec FFmpeg.""""""
-    try:
-        logger.info("Début de la compression vidéo")
-        start_time = time.time()
-        stream = ffmpeg.input(file_path)
-        target_size_mb = original_size_mb * 0.65
-        target_bitrate = int(target_size_mb * 8 * 1000 / duration) if duration else 400
-        stream = ffmpeg.output(
-            stream,
-            output_path,
-            vcodec='libx264' if format_choice == 'mp4' else 'mpeg4',
-            crf=35,
-            s='640x360',
-            **{'b:v': f'{target_bitrate}k'},
-            f=format_choice
-        )
-        ffmpeg.run(stream, overwrite_output=True)
-        end_time = time.time()
-        compression_time = end_time - start_time
-        compressed_size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        logger.info(f"Compression terminée : {compressed_size_mb:.2f} Mo en {compression_time:.2f}s")
-        return compressed_size_mb, compression_time
-    except Exception as e:
-        logger.error(f"Erreur compression vidéo : {str(e)}")
-        raise
-
-
-async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """"""Gère les vidéos envoyées et les compresse.""""""
-    user = update.message.from_user
-    logger.info(f"Vidéo reçue de l'utilisateur {user.id}")
-    video = update.message.video
-
-    if not video.file_size:
-        logger.error("Taille de la vidéo non disponible")
-        await update.message.reply_text("Erreur : impossible de vérifier la taille de la vidéo.")
-        return
-
-    file_size_mb = video.file_size / (1024 * 1024)
-    if file_size_mb > 50:
-        logger.warning(f"Vidéo trop grosse : {file_size_mb:.2f} Mo")
-        await update.message.reply_text(
-            "Désolé, la vidéo est trop grosse ({:.2f} Mo). Limite Telegram : 50 Mo.".format(file_size_mb)
-        )
-        return
-
-    video_file = video.get_file()
-    format_choice = user_formats.get(user.id, 'mp4')
-    video_path = f"/tmp/{user.id}_original.mp4"
-    compressed_path = f"/tmp/{user.id}_compressed.{format_choice}"
-
-    try:
-        logger.info("Téléchargement de la vidéo")
-        await update.message.reply_text("Téléchargement de la vidéo...")
-        await video_file.download_to_drive(video_path)
-    except Exception as e:
-        logger.error(f"Erreur téléchargement vidéo : {str(e)}")
-        await update.message.reply_text(f"Erreur lors du téléchargement : {str(e)}")
-        return
-
-    try:
-        await update.message.reply_text(f"Compression en cours (360p, format {format_choice.upper()})...")
-        compressed_size_mb, compression_time = compress_video(
-            video_path, compressed_path, file_size_mb, video.duration, format_choice
-        )
-
-        if compressed_size_mb > 50:
-            logger.warning(f"Vidéo compressée trop grosse : {compressed_size_mb:.2f} Mo")
-            await update.message.reply_text(
-                f"Vidéo compressée à {compressed_size_mb:.2f} Mo, mais trop grosse pour Telegram (limite 50 Mo)."
-            )
-            os.remove(video_path)
-            os.remove(compressed_path)
-            return
-
-        await update.message.reply_text(
-            f"Compression terminée en {compression_time:.2f}s !\n"
-            f"Taille initiale : {file_size_mb:.2f} Mo\n"
-            f"Taille compressée : {compressed_size_mb:.2f} Mo"
-        )
-        with open(compressed_path, "rb") as compressed_file:
-            await update.message.reply_video(
-                compressed_file, caption=f"Vidéo compressée en {format_choice.upper()} !"
-            )
-
-        os.remove(video_path)
-        os.remove(compressed_path)
-
-    except Exception as e:
-        logger.error(f"Erreur lors de la compression : {str(e)}")
-        await update.message.reply_text(f"Oops, erreur lors de la compression : {str(e)}")
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        if os.path.exists(compressed_path):
-            os.remove(compressed_path)
-"""
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
@@ -425,11 +359,13 @@ if __name__ == '__main__':
     cancel_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel$")
 
     conv_handler_pre_suffix = ConversationHandler(
-        entry_points=[],
+        entry_points=[
+            CallbackQueryHandler(set_prefix_suffix, pattern="^(prefixe|suffixe)$")
+        ],
         states={
             ASK_PREFIX_SUFFIX: [
                 MessageHandler(filters.TEXT, receive_prefix_suffix),
-                CallbackQueryHandler(cancel_callback, pattern="^back_to_settings$"),
+                CallbackQueryHandler(conversation_back_to_setting, pattern="^back_to_settings$"),
                 CallbackQueryHandler(delete_pre_suffix, pattern="^delete_prefixe$"),
                 CallbackQueryHandler(delete_pre_suffix, pattern="^delete_suffixe$")
             ]
@@ -443,7 +379,7 @@ if __name__ == '__main__':
         states={
             ASK_THUMBNAIL: [
                 MessageHandler(filters.PHOTO, receive_thumbnail),
-                CallbackQueryHandler(cancel_callback, pattern="^back_to_settings$"),
+                CallbackQueryHandler(conversation_back_to_setting, pattern="^back_to_settings$"),
                 CallbackQueryHandler(delete_thumbnail, pattern="^delete_thumbnail$")
             ]
         },
@@ -458,6 +394,5 @@ if __name__ == '__main__':
     application.add_handler(conv_handler_pre_suffix)
     application.add_handler(main_router_handler)
     application.add_handler(cancel_handler)
-
 
     application.run_polling()
