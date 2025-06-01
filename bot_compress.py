@@ -84,6 +84,16 @@ ASK_THUMBNAIL = 1
 
 # === Menu de paramètre principal ===
 def build_settings_message(user: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """
+        Generates the text and keyboard markup for the settings menu.
+
+        Args:
+            user (dict): User's saved settings.
+
+        Returns:
+            tuple: A Markdown-formatted message and its InlineKeyboardMarkup.
+        """
+
     upload_type = "Media" if user['upload_type'] == "document" else "Document"
     keyboard = [
         [InlineKeyboardButton(f"Upload comme {upload_type}", callback_data="upload_type")],
@@ -118,6 +128,11 @@ def build_settings_message(user: dict) -> tuple[str, InlineKeyboardMarkup]:
 
 
 async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+        Displays or updates the main compression settings menu for the user.
+        Can be triggered by command or callback.
+        """
+
     data = await bot_manager.load_data()
     user_id = str(update.effective_user.id)
     if user_id not in data:
@@ -153,6 +168,11 @@ def build_choice_keyboard(param_name: str, choices: list[str]) -> InlineKeyboard
 
 # === Gestion des set:param:value ===
 async def handle_set_param(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+        Callback handler to set a specific user parameter (e.g., bitrate, format).
+        Updates the data store and refreshes the settings message.
+        """
+
     query = update.callback_query
     _, param_name, value = query.data.split(" ")
 
@@ -173,6 +193,11 @@ def pre_suffix_keyboard(param_name: str):
 
 
 async def set_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+        Entry point for asking the user to type a custom prefix or suffix.
+        Stores the request context and parameter name in user_data.
+        """
+
     query = update.callback_query
     await query.answer()
 
@@ -191,6 +216,11 @@ async def set_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === Changer préfixe ou suffixe ===
 async def receive_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+        Handles text input from the user to set the prefix or suffix.
+        Updates the stored settings and refreshes the UI.
+        """
+
     user_id = str(update.effective_user.id)
     data = await bot_manager.load_data()
     param_name = context.user_data.pop('param_name')
@@ -272,6 +302,11 @@ async def conversation_back_to_setting(update: Update, context: ContextTypes.DEF
 
 # === Routeur principal ===
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+        Main dispatcher for all inline button actions in the settings menu.
+        Routes button presses to the correct action.
+        """
+
     query = update.callback_query
     data = query.data
 
@@ -344,8 +379,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                    )
 
 
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Display help instructions to the user."""
+    help_text = (
+        "📚 *Video Compression Bot - Help*\n\n"
+        "You can send me a video file and I will compress it based on your preferences.\n\n"
+        "⚙️ *Settings*\n"
+        "/settings – Open the compression settings menu:\n"
+        "• Output format (mp4, mkv, avi...)\n"
+        "• Resolution (e.g., 1280x720)\n"
+        "• Bitrate (e.g., 480k, 1000k)\n"
+        "• Filename prefix/suffix\n"
+        "• Thumbnail\n"
+        "• FFmpeg tune profile\n\n"
+        "▶️ *How to use*\n"
+        "1. Set your preferences via /settings.\n"
+        "2. Send me a video file (max ~2000MB for upload).\n"
+        "3. I will compress it and send it back to you.\n\n"
+        "🔄 You can reset your settings anytime in the settings menu.\n\n"
+        "👨‍💻 Created by @Kevloudy and @Samson_Hyacinth"
+    )
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=help_text,
+                                   parse_mode="MarkdownV2")
 
 
 if __name__ == '__main__':
