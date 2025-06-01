@@ -379,8 +379,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=(
-                                       "Salut ! Je suis le bot de compression vidéo par @Kevloudy 😎\n"
-                                       "Faites la commande /help pour afficher l'aide."
+                                       "Bienvenue ! Je suis le bot de compression vidéo développé par @Kevloudy and @Samson_Hyacinth 💻🎞️\n"
+                                       "Utilisez la commande /help pour consulter l'aide."
                                         )
                                    )
 
