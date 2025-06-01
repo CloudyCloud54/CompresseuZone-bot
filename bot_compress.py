@@ -55,7 +55,7 @@ class BotManager:
             data[user_id] = {
                 "upload_type": "media",
                 "video_format": "mp4",
-                "compresse_resolution": "1280:720",
+                "compresse_resolution": "720:480",
                 "prefixe": "",
                 "suffixe": "",
                 "thumbnail": "Not exist",
@@ -69,7 +69,7 @@ class BotManager:
         data[user_id] = {
             "upload_type": "media",
             "video_format": "mp4",
-            "compresse_resolution": "1280:720",
+            "compresse_resolution": "720:480",
             "prefixe": "",
             "suffixe": "",
             "thumbnail": "Not exist",
@@ -230,7 +230,7 @@ async def receive_prefix_suffix(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = str(update.effective_user.id)
     data = await bot_manager.load_data()
     param_name = context.user_data.pop('param_name')
-    data[user_id][f"{param_name}"] = update.message.text
+    data[user_id][f"{param_name}"] = update.message.text + " "
     await bot_manager.save_data(data)
     await context.bot.delete_message(chat_id= update.effective_chat.id, message_id=update.effective_message.id)
 
@@ -395,13 +395,17 @@ async def upload_compressed_video(file_path: Path,
                                         caption=f"*{file_path.stem}*",
                                         thumbnail=f"{update.effective_user.id}/thumbnail.jpeg",
                                         parse_mode="Markdown")
+    
+    else:
 
-    await context.bot.send_video(chat_id= update.effective_chat.id,
-                                 video=file_path,
-                                 caption=f"*{file_path.stem}*",
-                                 thumbnail=f"{update.effective_user.id}/thumbnail.jpeg",
-                                 parse_mode="Markdown"
-                                 )
+        await context.bot.send_video(chat_id= update.effective_chat.id,
+                                    video=file_path,
+                                    caption=f"*{file_path.stem}*",
+                                    thumbnail=f"{update.effective_user.id}/thumbnail.jpeg",
+                                    parse_mode="Markdown"
+                                    )
+        
+    file_path.unlink(missing_ok=True)
 
 
 def compress_video(input_path: Path,
@@ -441,7 +445,7 @@ def compress_video(input_path: Path,
         "-map", "0",
         "-vcodec", vcodec,
         "-vf", f"scale={resolution}",
-        "-crf", crf,
+        "-b", bitrate,
         "-tune", tune,
         "-preset", preset,
         str(output_path)
@@ -454,6 +458,8 @@ def compress_video(input_path: Path,
 
     duration = time.time() - start_time
     size_mb = output_path.stat().st_size / (1024 * 1024)
+
+    input_path.unlink(missing_ok=True)
 
     return round(size_mb, 2), round(duration, 2)
 
@@ -523,7 +529,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parent = file_path.parent
     stem = file_path.stem.replace("original_", "")
-    filename = f"{user_settings['prefixe']}{stem}{user_settings['suffixe']}.{user_settings.get('video_format', "mkv")}"
+    filename = f"{user_settings['prefixe']} {stem}{user_settings['suffixe']}.{user_settings.get('video_format', "mkv")}"
     compressed_path = parent / filename
 
     try:
