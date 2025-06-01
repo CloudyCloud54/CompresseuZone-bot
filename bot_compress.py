@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import subprocess
 import time
 
 from dotenv import load_dotenv
@@ -75,12 +76,17 @@ class BotManager:
             "bitrate": "480k",
             "tune": "film"
         }
+        user_dir = Path(Path.cwd() / f"{user_id}")
+        thumbnail_path = user_dir / "thumbnail.jpeg"
+        if thumbnail_path.exists():
+            thumbnail_path.unlink(missing_ok=True)
         await self.save_data(data)
 
 bot_manager = BotManager()
 
 ASK_PREFIX_SUFFIX = 0
 ASK_THUMBNAIL = 1
+MAX_VIDEO_SIZE_MB = 2000
 
 # === Menu de paramètre principal ===
 def build_settings_message(user: dict) -> tuple[str, InlineKeyboardMarkup]:
@@ -378,6 +384,164 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                         )
                                    )
 
+async def upload_compressed_video(file_path: Path,
+                                  user_settings:dict,
+                                  update: Update,
+                                  context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not file_path.exists():
+        return
+    if user_settings['upload_type'] == "document":
+        await context.bot.send_document(chat_id=update.effective_chat.id, document=file_path,
+                                        caption=f"*{file_path.stem}*",
+                                        thumbnail=f"{update.effective_user.id}/thumbnail.jpeg",
+                                        parse_mode="Markdown")
+
+    await context.bot.send_video(chat_id= update.effective_chat.id,
+                                 video=file_path,
+                                 caption=f"*{file_path.stem}*",
+                                 thumbnail=f"{update.effective_user.id}/thumbnail.jpeg",
+                                 parse_mode="Markdown"
+                                 )
+
+
+def compress_video(input_path: Path,
+                   output_path: Path,
+                   vcodec: str = "libx264",
+                   resolution: str = "1280:720",
+                   bitrate: str = "480k",
+                   crf: str = "28",
+                   tune: str = "animation",
+                   preset: str = "faster"
+                   ) -> tuple[float, float]:
+    """
+    Compress a video using FFmpeg with specified settings.
+
+    Args:
+        input_path (Path): Path to original video.
+        output_path (Path): Path to save compressed video.
+        vcodec (str): video codec to use x264 or x265.
+        resolution (str): Resolution to scale (e.g., "1280:720").
+        bitrate (str): Target bitrate (e.g. 480k, "800k", etc).
+        tune (str): FFmpeg tune preset (e.g. "film", "animation").
+        preset (str): compression preset (e.g. fast, faster, slow
+
+    Returns:
+        tuple: (compressed_file_size_MB, compression_duration_sec)
+
+    Raises:
+        RuntimeError: If FFmpeg fails.
+    """
+    start_time = time.time()
+
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-n",
+        "-loglevel", "error",
+        "-i", str(input_path),
+        "-map", "0",
+        "-vcodec", vcodec,
+        "-vf", f"scale={resolution}",
+        "-crf", crf,
+        "-tune", tune,
+        "-preset", preset,
+        str(output_path)
+    ]
+
+    try:
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"FFmpeg failed:\n{e.stderr.decode()}") from e
+
+    duration = time.time() - start_time
+    size_mb = output_path.stat().st_size / (1024 * 1024)
+
+    return round(size_mb, 2), round(duration, 2)
+
+
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle incoming video or document messages.
+    Validates size and type, then downloads to user-specific folder.
+    """
+    user_id = str(update.effective_user.id)
+    message = update.message
+
+    if message.video:
+        file = message.video
+        extension = Path(file.file_name).suffix if file.file_name else ".mkv"
+        file_name = Path(file.file_name).stem if file.file_name else ""
+    elif message.document and message.document.mime_type.startswith("video/"):
+        file = message.document
+        extension = Path(file.file_name).suffix if file.file_name else ".mkv"
+        file_name = Path(file.file_name).stem if file.file_name else ""
+    else:
+        return
+
+    # Check size limit (<= 2 GB)
+    file_size_mb = file.file_size / (1024 * 1024)
+    if file_size_mb > MAX_VIDEO_SIZE_MB:
+        await context.bot.send_message(chat_id= update.effective_chat.id,
+                                       text=f"❌ Video too large: {file_size_mb:.2f} MB (limit is 2000 MB).")
+        return
+
+    # User-specific folder
+    user_dir = Path.cwd() / user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    # Download original video
+    file_path = user_dir / f"original_{file_name}{extension}"
+    upload_message = await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text="📥 Downloading video...")
+    telegram_file = await context.bot.get_file(file.file_id)
+
+    try:
+        await telegram_file.download_to_drive(custom_path=file_path)
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        await context.bot.edit_message_text(chat_id= update.effective_chat.id,
+                                            message_id=upload_message.message_id,
+                                            text="❌ Failed to download the video.")
+
+        return
+
+    await context.bot.edit_message_text(chat_id= update.effective_chat.id,
+                                        message_id=upload_message.message_id,
+                                   text="✅ Video downloaded successfully\n"
+                                        "Begin compression.....")
+
+    data = await bot_manager.load_data()
+    user_settings = data[user_id]
+    if not file_path.exists():
+        await context.bot.edit_message_text(chat_id=update.effective_chat.id,
+                                            message_id=upload_message.message_id,
+                                            text="✅ Quelque chose s'est mal passée\n")
+        return
+
+    # To avoid encodage incompatibilité
+    if extension == ".mkv":
+        user_settings['video_format'] = "mkv"
+
+    parent = file_path.parent
+    stem = file_path.stem.replace("original_", "")
+    filename = f"{user_settings['prefixe']}{stem}{user_settings['suffixe']}.{user_settings.get('video_format', "mkv")}"
+    compressed_path = parent / filename
+
+    try:
+        size_mb, duration = compress_video(
+            input_path=file_path,
+            output_path=compressed_path,
+            resolution=user_settings["compresse_resolution"],
+            bitrate=user_settings["bitrate"],
+            tune=user_settings["tune"]
+        )
+        await context.bot.edit_message_text(chat_id=update.effective_chat.id,
+                                            message_id=upload_message.message_id,
+                                            text=f"✅ Compression complete: {size_mb}MB in {duration}s")
+    except Exception as e:
+        await message.reply_text(f"❌ Compression failed: {str(e)}")
+
+    await upload_compressed_video(compressed_path, user_settings, update, context)
+
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display help instructions to the user."""
@@ -408,12 +572,13 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 if __name__ == '__main__':
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).base_url("http://localhost:8081/bot").read_timeout(2000).write_timeout(2000).local_mode(True).build()
 
     start_handler = CommandHandler('start', start)
     settings_handler = CommandHandler('settings', settings)
     help_handler = CommandHandler('help', help)
     main_router_handler = CallbackQueryHandler(callback_router)
+    video_handler = MessageHandler(filters.VIDEO | filters.ATTACHMENT, handle_video)
     cancel_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel$")
 
     conv_handler_pre_suffix = ConversationHandler(
@@ -452,5 +617,6 @@ if __name__ == '__main__':
     application.add_handler(conv_handler_pre_suffix)
     application.add_handler(main_router_handler)
     application.add_handler(cancel_handler)
+    application.add_handler(video_handler)
 
     application.run_polling()
